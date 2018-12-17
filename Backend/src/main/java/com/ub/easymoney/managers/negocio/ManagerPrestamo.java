@@ -5,24 +5,28 @@
  */
 package com.ub.easymoney.managers.negocio;
 
+import com.ub.easymoney.daos.admin.DaoUsuario;
 import com.ub.easymoney.daos.negocio.DaoAbono;
 import com.ub.easymoney.daos.negocio.DaoPrestamo;
+import com.ub.easymoney.entities.admin.Usuario;
 import com.ub.easymoney.entities.negocio.Abono;
 import com.ub.easymoney.entities.negocio.Multa;
 import com.ub.easymoney.entities.negocio.MultaPK;
 import com.ub.easymoney.entities.negocio.Prestamo;
 import com.ub.easymoney.managers.commons.ManagerSQL;
 import com.ub.easymoney.models.ModelCargarPrestamos;
-import com.ub.easymoney.models.ModeloPrestamoTotales;
-import com.ub.easymoney.models.ModeloPrestamoTotalesGenerales;
+import com.ub.easymoney.models.ModelPrestamoTotales;
+import com.ub.easymoney.models.ModelPrestamoTotalesGenerales;
 import com.ub.easymoney.models.filtros.FiltroPrestamo;
 import com.ub.easymoney.utils.UtilsConfig;
+import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.List;
 import static java.util.stream.Collectors.toList;
+import javax.persistence.EntityManager;
 import org.jinq.tuples.Pair;
 
 /**
@@ -67,8 +71,8 @@ public class ManagerPrestamo extends ManagerSQL<Prestamo, Integer> {
      * @return modelo con los totales generales de un prestamo
      * @throws Exception si existe un error de I/O
      */
-    public ModeloPrestamoTotales totalesPrestamo(int prestamoId) throws Exception {
-        ModeloPrestamoTotales mPrestamoTotales = new ModeloPrestamoTotales();
+    public ModelPrestamoTotales totalesPrestamo(int prestamoId) throws Exception {
+        ModelPrestamoTotales mPrestamoTotales = new ModelPrestamoTotales();
 
         Prestamo prestamo = this.findOne(prestamoId);
         List<Abono> abonos = prestamo.getAbonos();
@@ -86,7 +90,7 @@ public class ManagerPrestamo extends ManagerSQL<Prestamo, Integer> {
      * @return modelo con los totales generales
      * @throws Exception si existe un error de I/O
      */
-    public ModeloPrestamoTotalesGenerales totalesPrestamosGenerales() throws Exception {
+    public ModelPrestamoTotalesGenerales totalesPrestamosGenerales() throws Exception {
 
         List<Pair<Integer, Integer>> abonosMultas = new DaoAbono().stream()
                 .filter(a -> a.isAbonado())
@@ -101,7 +105,7 @@ public class ManagerPrestamo extends ManagerSQL<Prestamo, Integer> {
         final int capital = totalRecuperado - totalPrestamo;
         final float porcentajeAbonado = (((float) totalAbonado / (float) totalAPagar) * 100f);
 
-        return new ModeloPrestamoTotalesGenerales(totalPrestamo, totalAbonado, totalMultado, totalRecuperado, capital, porcentajeAbonado);
+        return new ModelPrestamoTotalesGenerales(totalPrestamo, totalAbonado, totalMultado, totalRecuperado, capital, porcentajeAbonado);
     }
 
     /**
@@ -169,7 +173,7 @@ public class ManagerPrestamo extends ManagerSQL<Prestamo, Integer> {
      * @param filtro objeto con las propiedades a filtrar en los prestamos
      * @return modelo del resultado de los totales generales del prestamo
      */
-    public ModeloPrestamoTotalesGenerales totalesPrestamosGenerales(FiltroPrestamo filtro) throws Exception {
+    public ModelPrestamoTotalesGenerales totalesPrestamosGenerales(FiltroPrestamo filtro) throws Exception {
         List<Prestamo> prestamos = new DaoPrestamo().findAll(filtro);
         if (!filtro.isAcreditados()) {
             prestamos = prestamos.stream()
@@ -196,7 +200,7 @@ public class ManagerPrestamo extends ManagerSQL<Prestamo, Integer> {
         final int capital = totalRecuperado - totalPrestamo;
         final float porcentajeAbonado = (((float) totalAbonado / (float) totalAPagar) * 100f);
 
-        return new ModeloPrestamoTotalesGenerales(totalPrestamo, totalAbonado, totalMultado, totalRecuperado, capital, porcentajeAbonado);
+        return new ModelPrestamoTotalesGenerales(totalPrestamo, totalAbonado, totalMultado, totalRecuperado, capital, porcentajeAbonado);
     }
 
     public Prestamo persistPruebaDentroMes(Prestamo entity) throws Exception {
@@ -312,8 +316,14 @@ public class ManagerPrestamo extends ManagerSQL<Prestamo, Integer> {
      * @return cantidad a entregar de dinero fisico al cliente 
      * @throws Exception
      */
-    public int renovarPrestamo(final int prestamoId, final int cantNuevoPrestamo) throws Exception {
+    public int renovarPrestamo(final int prestamoId, final int cantNuevoPrestamo) throws InvalidParameterException, Exception {
         Prestamo prestamoRenovar = this.findOne(prestamoId);
+        //validar el numero minimo de abonos
+        long totalDeAbonos = prestamoRenovar.getAbonos().stream().filter( a -> a.isAbonado()).count();
+        if (totalDeAbonos < 25) {
+            throw new InvalidParameterException("No cuenta con el número de abonos minimos, necesita 25.");
+        }
+                
         Prestamo nuevoPrestamo = new Prestamo();
 
         nuevoPrestamo.setCliente(prestamoRenovar.getCliente());
@@ -333,6 +343,16 @@ public class ManagerPrestamo extends ManagerSQL<Prestamo, Integer> {
 
         DaoPrestamo daoPrestamo = new DaoPrestamo();
         return daoPrestamo.renovarPrestamo(prestamoRenovar, nuevoPrestamo);
+    }
+
+    public void cambiarCobrador(int prestamoId, int cobradorId) throws Exception {        
+        Prestamo p = this.dao.findOne(prestamoId);
+        Usuario u = new DaoUsuario().findOne(cobradorId);        
+        p.setCobrador(u);        
+        EntityManager em = this.dao.getEMInstance();
+        em.getTransaction().begin();        
+        em.merge(p);                
+        em.getTransaction().commit();
     }
 
 }

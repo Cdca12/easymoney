@@ -20,7 +20,7 @@ export default class ClienteCard extends React.Component{
     this.onEditHandler = this.onEditHandler.bind(this);
     this.editarCliente = this.editarCliente.bind(this);
     this.eliminarCliente = this.eliminarCliente.bind(this);
-    this.handleCloseWarning = this.handleCloseWarning.bind(this);
+    this.handleCloseWarning = this.handleCloseWarning.bind(this);    
   }
 
   handleCloseWarning(){
@@ -92,6 +92,9 @@ export default class ClienteCard extends React.Component{
              <Card.Header>
                {this.state.cliente.nombre}
              </Card.Header>
+             <Card.Header>
+               {this.state.cliente.apodo}
+             </Card.Header>
              <Card.Meta>
                {this.state.cliente.telefono}
              </Card.Meta>
@@ -107,7 +110,12 @@ export default class ClienteCard extends React.Component{
                  open={this.state.modalOpenEditar}>
                  <Header content='Editar cliente' />
                  <Modal.Content>
-                   <ClienteForm cliente={this.state.cliente} getData={this.onEditHandler} editarCliente={this.editarCliente}>
+                   <ClienteForm
+                   cliente={this.state.cliente}
+                   getData={this.onEditHandler}
+                   editarCliente={this.editarCliente}
+                   clientes={this.props.clientes}
+                   >
                    </ClienteForm>
                  </Modal.Content>
                </Modal>

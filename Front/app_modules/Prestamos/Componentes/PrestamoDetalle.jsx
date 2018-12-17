@@ -1,6 +1,7 @@
 import React, {Component} from 'react';
 import { Table, Loader, Header, Segment, Checkbox, Form, Button} from 'semantic-ui-react';
 import ModalRenovar from './ModalRenovar.jsx';
+import ModalReasignar from './ModalReasignar.jsx';
 import * as utils from '../../../utils.js';
 
 export default class PrestamoDetalle extends Component{
@@ -187,19 +188,23 @@ export default class PrestamoDetalle extends Component{
       if (this.state.totales !== null) {
         return(
           <Table.Body>
-            <Table.Cell textAlign='center'>${this.state.totales.totalAbonado}</Table.Cell>
-            <Table.Cell textAlign='center'>${this.state.totales.totalMultado}</Table.Cell>
-            <Table.Cell textAlign='center'>${this.state.totales.totalRecuperado}</Table.Cell>
-            <Table.Cell textAlign='center'>{this.state.totales.porcentajePagado}%</Table.Cell>
+            <Table.Row>
+              <Table.Cell textAlign='center'>${this.state.totales.totalAbonado}</Table.Cell>
+              <Table.Cell textAlign='center'>${this.state.totales.totalMultado}</Table.Cell>
+              <Table.Cell textAlign='center'>${this.state.totales.totalRecuperado}</Table.Cell>
+              <Table.Cell textAlign='center'>{this.state.totales.porcentajePagado}%</Table.Cell>
+            </Table.Row>
           </Table.Body>
         );
       }else{
         return(
           <Table.Body>
+          <Table.Row>
             <Table.Cell textAlign='center'>$XXX</Table.Cell>
             <Table.Cell textAlign='center'>$XXX</Table.Cell>
             <Table.Cell textAlign='center'>$XXX</Table.Cell>
             <Table.Cell textAlign='center'>XXX%</Table.Cell>
+            </Table.Row>
           </Table.Body>
         );
       }
@@ -207,27 +212,23 @@ export default class PrestamoDetalle extends Component{
     }
 
     renderButton(){
-      if (this.state.loading) { //actualizando el prestamo
         return(
           <div>
-            <Button color='green' loading>
+            <Button
+              loading={this.state.loading}
+              color='green'
+              onClick={this.actualizarPrestamo}>
               Actualizar
             </Button>
-            <Button color='blue' disabled>
-              Renovar
-            </Button>
+            <ModalRenovar
+              prestamo={this.props.prestamo}
+              totales={this.state.totales}
+              update={this.props.update}/>
+            <ModalReasignar
+              prestamo={this.props.prestamo}
+              update={this.props.update}/>
           </div>
         );
-      }else{
-          return(
-            <div>
-              <Button color='green' onClick={this.actualizarPrestamo}>
-                Actualizar
-              </Button>
-              <ModalRenovar prestamo={this.props.prestamo} update={this.props.update}></ModalRenovar>
-            </div>
-          );
-      }
     }
 
     render(){
@@ -268,7 +269,6 @@ export default class PrestamoDetalle extends Component{
               {this.renderAbonos()}
             </Table.Body>
           </Table>
-
           <Table celled>
             <Table.Header>
               <Table.Row>

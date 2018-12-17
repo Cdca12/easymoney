@@ -8,13 +8,19 @@ import com.easymoney.entities.Abono;
 import com.easymoney.entities.Multa;
 import com.easymoney.entities.Prestamo;
 import com.easymoney.models.ModelAbonarPrestamo;
+import com.easymoney.models.ModelDistribucionDeAbono;
+import com.easymoney.models.ModelImpresionAbono;
 import com.easymoney.models.ModelPrestamoTotales;
 import com.easymoney.models.ModelTotalAPagar;
 import com.easymoney.models.services.Response;
 import com.easymoney.utils.UtilsDate;
 import com.easymoney.utils.UtilsPreferences;
+import com.easymoney.utils.activities.Funcion;
+import com.easymoney.utils.bluetoothPrinterUtilities.UtilsPrinter;
 import com.easymoney.utils.schedulers.SchedulerProvider;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -32,13 +38,13 @@ import io.reactivex.functions.Consumer;
  */
 public class DetallePrestamoPresenter implements DetallePrestamoContract.Presenter {
 
-    private final PrestamoRepository repository = PrestamoRepository.getINSTANCE();
+    private static final String MULTA_POST_PLAZO = "Multa post-plazo";
+    private final PrestamoRepository repository = PrestamoRepository.getInstance();
     private FloatingActionButton fab;
     private CompositeDisposable compositeDisposable = new CompositeDisposable();
     private ConsultaFragment consultaFragment;
     private AbonoFragment abonoFragment;
     private Prestamo prestamo;
-    private ModelPrestamoTotales prestamoTotales;
     private ModelTotalAPagar modelTotalAPagar;
 
     public DetallePrestamoPresenter(Prestamo prestamo) {
@@ -168,14 +174,6 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
         this.abonoFragment = abonoFragment;
     }
 
-    public ModelPrestamoTotales getPrestamoTotales() {
-        return prestamoTotales;
-    }
-
-    public void setPrestamoTotales(ModelPrestamoTotales prestamoTotales) {
-        this.prestamoTotales = prestamoTotales;
-    }
-
     public Prestamo getPrestamo() {
         return prestamo;
     }
@@ -188,6 +186,11 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
         this.consultaFragment.llenarDatosGenerales(prestamo);
     }
 
+    /**
+     * Construye el modelo de los totales a pagar del prestamo
+     *
+     * @return modelo con abono a pagar, multa a pagar y la multa del mes en modelo
+     */
     public ModelTotalAPagar calcularTotalesPagar() {
         int abonoAPagar = 0;
         int multaAPagar = 0;
@@ -262,7 +265,7 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
      *
      * @param abono cantidad de dinero a abonar por el cliente, intresado en el dialog
      */
-    public void abonarAlPrestamo(int abono, final String multaDes, final ModelTotalAPagar model) {
+    public void abonarAlPrestamo(int abono, String multaDes, final ModelTotalAPagar model) {
         final int abonoTotal = abono;
         Calendar cal = new GregorianCalendar();
         cal.setTime(new Date());
@@ -281,6 +284,11 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
             }
         });
 
+        //valores de distribucion de pago
+        int totalDeAbono = 0;
+        int totalDeMulta = 0;
+        int totalDeMultaMes = 0;
+
         boolean ignorarMulta = this.ignorarMulta(abonos);
         //comparar si el total abonado es el que deberia de tener abonado hasta hoy
         //si -> esta al corriente y puede pagar sin abonos
@@ -295,9 +303,13 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
                     if (!ignorarMulta) {
                         if (abono > multaDiaria) {
                             a.getMulta().setMulta(multaDiaria);
+                            a.getMulta().setMultaDes(multaDes);
                             abono -= multaDiaria;
+                            totalDeMulta += multaDiaria;
                         } else {
+                            totalDeMulta += abono;
                             a.getMulta().setMulta(abono);
+                            a.getMulta().setMultaDes(multaDes);
                             abono = 0;
                         }
                     }
@@ -305,20 +317,24 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
                 if (abono > this.prestamo.getCobroDiario()) {
                     a.setAbonado(true);
                     abono -= this.prestamo.getCobroDiario();
+                    totalDeAbono += this.prestamo.getCobroDiario();
                 } else {
                     a.setAbonado(true);
                     a.setCantidad(abono);
+                    totalDeAbono += abono;
                     abono = 0;
                 }
             } else {
                 int difAbonado = (this.prestamo.getCobroDiario() - a.getCantidad());
                 cal.setTime(a.getAbonoPK().getFecha());
-                if (cal.get(Calendar.DAY_OF_YEAR) == diaActual) {
+                if (cal.get(Calendar.DAY_OF_YEAR) >= diaActual) {
                     if (abono > difAbonado) {
                         a.setCantidad(this.prestamo.getCobroDiario());
                         abono -= difAbonado;
+                        totalDeAbono += difAbonado;
                     } else {
                         a.setCantidad(a.getCantidad() + abono);
+                        totalDeAbono += abono;
                         abono = 0;
                     }
                 } else {
@@ -327,17 +343,24 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
                         int difMulta = multaDiaria - a.getMulta().getMulta();
                         if (abono > difMulta) {
                             a.getMulta().setMulta(multaDiaria);
+                            a.getMulta().setMultaDes(multaDes);
                             abono -= difMulta;
+                            totalDeMulta += difMulta;
                         } else {
                             a.getMulta().setMulta(a.getMulta().getMulta() + abono);
+                            a.getMulta().setMultaDes(multaDes);
+                            totalDeMulta += abono;
                             abono = 0;
                         }
                         if (abono > difAbonado) {
                             a.setCantidad(this.prestamo.getCobroDiario());
                             abono -= difAbonado;
+                            totalDeAbono += difAbonado;
                         } else {
                             a.setCantidad(a.getCantidad() + abono);
+                            totalDeAbono += abono;
                             abono = 0;
+
                         }
                     }
                 }
@@ -357,49 +380,76 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
                         Abono abonoPostPlazo = new Abono(prestamo.getId(), cal.getTime());
                         Multa multaPostPlazo = new Multa(prestamo.getId(), cal.getTime());
                         multaPostPlazo.setMulta(cantidadMultaPostPlazo);
-                        multaPostPlazo.setMultaDes("Multa post-plazo");
+                        multaPostPlazo.setMultaDes(MULTA_POST_PLAZO);
                         abonoPostPlazo.setMulta(multaPostPlazo);
                         abonoPostPlazo.setAbonado(true);
                         abonos.add(abonoPostPlazo);
                         abono -= cantidadMultaPostPlazo;
+                        totalDeMultaMes += cantidadMultaPostPlazo;
                         cal.add(Calendar.DAY_OF_YEAR, 1);
                     }
                 }
             }
         }
 
+        final ModelDistribucionDeAbono modelDistribucionDeAbono
+                = new ModelDistribucionDeAbono(totalDeAbono, totalDeMulta, totalDeMultaMes);
+
         prestamo.setAbonos(abonos);
         this.showLoading(true);
 
-        final ModelAbonarPrestamo modelAbonarPrestamo = new ModelAbonarPrestamo(abonoTotal, prestamo.getCliente().getId(), UtilsPreferences.loadLogedUser().getId(), prestamo);
+        final ModelAbonarPrestamo modelAbonarPrestamo = new ModelAbonarPrestamo(
+                abonoTotal,
+                prestamo.getCliente().getId(),
+                UtilsPreferences.loadLogedUser().getId(),
+                prestamo);
 
-        repository.abonarPrestamo(modelAbonarPrestamo)
-                .subscribeOn(SchedulerProvider.ioT())
-                .observeOn(SchedulerProvider.uiT())
-                .subscribe(new Consumer<Response<Prestamo, Object>>() {
-                    @Override
-                    public void accept(Response<Prestamo, Object> r) throws Exception {
-                        switch (r.getMeta().getStatus()) {
-                            case OK:
-                                proccessAbonos(prestamo.getAbonos());
-                                cargarTotalesPrestamo();
-                                UtilsPreferences.setPrestamoCobradoHoy(modelAbonarPrestamo.getPrestamo().getId());
-                                break;
-                            case ERROR:
-                                showMessage("Existió un error de programación del lado del servidor");
-                                break;
-                        }
+        compositeDisposable.add(
+                repository.abonarPrestamo(modelAbonarPrestamo)
+                        .subscribeOn(SchedulerProvider.ioT())
+                        .observeOn(SchedulerProvider.uiT())
+                        .subscribe(new Consumer<Response<Prestamo, Object>>() {
+                            @Override
+                            public void accept(Response<Prestamo, Object> r) throws Exception {
+                                switch (r.getMeta().getStatus()) {
+                                    case OK:
+                                        proccessAbonos(prestamo.getAbonos());
+                                        cargarTotalesPrestamo();
+                                        UtilsPreferences.setPrestamoCobradoHoy(modelAbonarPrestamo.getPrestamo().getId());
 
-                        showLoading(false);
-                    }
-                }, new Consumer<Throwable>() {
-                    @Override
-                    public void accept(Throwable throwable) throws Exception {
-                        showLoading(false);
-                        showMessage("Existió un error de comunicación");
-                        throwable.printStackTrace();
-                    }
-                });
+                                        ModelImpresionAbono modelImpresion =
+                                                crearModelImpresionAbono(prestamo, modelDistribucionDeAbono);
+
+                                        String macAddress = UtilsPreferences.loadMacPrinter();
+                                        if (macAddress == null || macAddress.isEmpty()) {
+                                            showMessage("No hay impresora configurada");
+                                        } else {
+                                            UtilsPrinter.imprimirRecibo(
+                                                    modelImpresion,
+                                                    macAddress,
+                                                    consultaFragment.getContext(),
+                                                    new Funcion<Throwable>() {
+                                                        @Override
+                                                        public void accept(Throwable throwable) {
+                                                            showMessage("Error de conexión con la impresora");
+                                                        }
+                                                    });
+                                        }
+                                        break;
+                                    case ERROR:
+                                        showMessage("Existió un error de programación del lado del servidor");
+                                        break;
+                                }
+                                showLoading(false);
+                            }
+                        }, new Consumer<Throwable>() {
+                            @Override
+                            public void accept(Throwable throwable) throws Exception {
+                                showLoading(false);
+                                showMessage("Existió un error de comunicación");
+                                throwable.printStackTrace();
+                            }
+                        }));
     }
 
     /**
@@ -418,8 +468,9 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
                 sumaAbonos += abono.getCantidad();
             }
         }
-
-        if (sumaAbonos < prestamo.getCantidadPagar() && this.getModelTotalAPagar().getTotalPagar() > 0) {
+        //ModelTotalAPagar modelTotalAPagar = this.getModelTotalAPagar();
+        //if (sumaAbonos < prestamo.getCantidadPagar() && modelTotalAPagar.getTotalPagar() > 0) {
+        if (sumaAbonos < prestamo.getCantidadPagar()) {
             this.fab.setVisibility(View.VISIBLE);
         } else {
             this.fab.setVisibility(View.GONE);
@@ -467,6 +518,59 @@ public class DetallePrestamoPresenter implements DetallePrestamoContract.Present
             }
         }
         return res;
+    }
+
+
+    /**
+     * Crea el modelo con los datos necesarios para impresion del recibo del abono
+     *
+     * @param p prestamo abonado
+     * @param d datos de distribucion de abono
+     * @return modelo con los datos calculados para la impresion del reibo
+     */
+    private ModelImpresionAbono crearModelImpresionAbono(Prestamo p, ModelDistribucionDeAbono d) {
+        int totalAbonado = 0;
+        int totalMultado = 0;
+        int totalMultadoMes = 0;
+
+        for (Abono abono : p.getAbonos()) {
+            if (abono.isAbonado()) {
+                totalAbonado += abono.getCantidad();
+                if (abono.getMulta().getMultaDes().equals(MULTA_POST_PLAZO)) {
+                    totalMultadoMes += abono.getMulta().getMulta();
+                } else {
+                    totalMultado += abono.getMulta().getMulta();
+                }
+            }
+        }
+
+        float porcentajeFormateado = new BigDecimal((float) totalAbonado / (float) p.getCantidadPagar() * 100f)
+                .setScale(2, RoundingMode.HALF_UP)
+                .floatValue();
+
+        int totalParaSaldar = p.getCantidadPagar() - totalAbonado;
+        if (totalParaSaldar < 0) {
+            totalParaSaldar = 0;
+        }
+        ModelImpresionAbono m = new ModelImpresionAbono(
+                p.getId(),
+                p.getCobrador().getNombre(),
+                p.getCliente().getNombre(),
+                UtilsDate.format_D_MM_YYYY_HH_MM(new Date()),
+                UtilsDate.format_D_MM_YYYY_HH_MM(p.getFecha()),
+                UtilsDate.format_D_MM_YYYY(p.getFechaLimite()),
+                d.getAbonado(),
+                d.getMultado(),
+                d.getMultadoMes(),
+                p.getCantidad(),
+                p.getCantidadPagar(),
+                totalAbonado,
+                totalMultado,
+                totalMultadoMes,
+                totalParaSaldar,
+                porcentajeFormateado
+        );
+        return m;
     }
 
 }

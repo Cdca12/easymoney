@@ -1,6 +1,7 @@
 package com.easymoney.modules.main;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
@@ -8,7 +9,6 @@ import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
-import android.text.Layout;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -27,9 +27,11 @@ import com.easymoney.entities.Prestamo;
 import com.easymoney.models.EnumPrestamos;
 import com.easymoney.models.services.Response;
 import com.easymoney.modules.cambiarContra.CambiarContraActivity;
+import com.easymoney.modules.configuracionImpresoras.DispositivosBTActivity;
 import com.easymoney.modules.detallePrestamo.DetallePrestamoActivity;
 import com.easymoney.modules.ingresosEgresos.IngresosEgresosActivity;
 import com.easymoney.modules.login.LoginActivity;
+import com.easymoney.modules.renovacion.RenovacionActivity;
 import com.easymoney.utils.UtilsDate;
 import com.easymoney.utils.UtilsPreferences;
 import com.easymoney.utils.schedulers.SchedulerProvider;
@@ -70,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         //drawer layout
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
         ActionBarDrawerToggle toggle = new ActionBarDrawerToggle(this, drawer, toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close);
+
         drawer.addDrawerListener(toggle);
         toggle.syncState();
 
@@ -79,6 +82,11 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
         TextView txtNombreUsuario = navigationView.getHeaderView(0).findViewById(R.id.nombreUsuario);
         TextView txtTipoUsuario = navigationView.getHeaderView(0).findViewById(R.id.tipoUsuario);
+
+        //si no es administrador, remover del menu
+        if (!UtilsPreferences.loadLogedUser().isTipo()){
+            navigationView.getMenu().findItem(R.id.renovacion).setVisible(false);
+        }
 
         txtNombreUsuario.setText(getIntent().getStringExtra("userName"));
         txtTipoUsuario.setText(getIntent().getStringExtra("userType"));
@@ -100,15 +108,19 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             }
         });
 
-        prestamoRepository = PrestamoRepository.getINSTANCE();
+        prestamoRepository = PrestamoRepository.getInstance();
         this.cargarPrestamos(EnumPrestamos.POR_COBRAR_HOY);
+    }
+
+    public String getURLForResource (int resourceId) {
+        return Uri.parse("android.resource://"+R.class.getPackage().getName()+"/" +resourceId).toString();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (this.prestamos != null){
-            if (!this.prestamos.isEmpty()){
+        if (this.prestamos != null) {
+            if (!this.prestamos.isEmpty()) {
                 setPrestamos(filtrarPorCobrarHoy(this.prestamos));
                 adapterPrestamo.replaceData(this.prestamos);
             }
@@ -133,6 +145,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         switch (id) {
             case R.id.cobros:
                 break;
+            case R.id.renovacion:
+                intent = new Intent(MainActivity.this, RenovacionActivity.class);
+                startActivity(intent);
+                break;
             case R.id.IE:
                 intent = new Intent(MainActivity.this, IngresosEgresosActivity.class);
                 startActivity(intent);
@@ -146,8 +162,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 intent = new Intent(MainActivity.this, CambiarContraActivity.class);
                 startActivity(intent);
                 break;
-            default:
-                break;
+            case R.id.configuracionImpresora:
+                intent = new Intent(MainActivity.this, DispositivosBTActivity.class);
+                startActivity(intent);
         }
         DrawerLayout drawer = findViewById(R.id.drawer_layout);
         drawer.closeDrawer(GravityCompat.START);
@@ -156,32 +173,32 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     public void cargarPrestamos(final EnumPrestamos enumPrestamos) {
         compositeDisposable.add(
-        prestamoRepository.findAll(enumPrestamos)
-                .subscribeOn(SchedulerProvider.ioT())
-                .observeOn(SchedulerProvider.uiT())
-                .subscribe(new Consumer<Response<List<Prestamo>, Object>>() {
-                               @Override
-                               public void accept(Response<List<Prestamo>, Object> r) throws Exception {
-                                   if (!r.getData().isEmpty()) {
-                                       tvInfo.setVisibility(View.GONE);
-                                       if (enumPrestamos == EnumPrestamos.POR_COBRAR_HOY) {
-                                           setPrestamos(filtrarPorCobrarHoy(r.getData()));
-                                       } else {
-                                           setPrestamos(r.getData());
-                                       }
+                prestamoRepository.findAll(enumPrestamos)
+                        .subscribeOn(SchedulerProvider.ioT())
+                        .observeOn(SchedulerProvider.uiT())
+                        .subscribe(new Consumer<Response<List<Prestamo>, Object>>() {
+                                       @Override
+                                       public void accept(Response<List<Prestamo>, Object> r) throws Exception {
+                                           if (!r.getData().isEmpty()) {
+                                               tvInfo.setVisibility(View.GONE);
+                                               if (enumPrestamos == EnumPrestamos.POR_COBRAR_HOY) {
+                                                   setPrestamos(filtrarPorCobrarHoy(r.getData()));
+                                               } else {
+                                                   setPrestamos(r.getData());
+                                               }
 
-                                       adapterPrestamo.replaceData(getPrestamos());
-                                   } else {
-                                       tvInfo.setText("Sin préstamos por cobrar");
+                                               adapterPrestamo.replaceData(getPrestamos());
+                                           } else {
+                                               tvInfo.setText("Sin préstamos por cobrar");
+                                           }
+                                       }
+                                   }, new Consumer<Throwable>() {
+                                       @Override
+                                       public void accept(Throwable throwable) throws Exception {
+                                           throwable.printStackTrace();
+                                       }
                                    }
-                               }
-                           }, new Consumer<Throwable>() {
-                               @Override
-                               public void accept(Throwable throwable) throws Exception {
-                                   throwable.printStackTrace();
-                               }
-                           }
-                )
+                        )
         );
     }
 
@@ -194,7 +211,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         if (this.prestamos != null) {
             List<Prestamo> prestamosBuscados = new ArrayList<>();
             for (Prestamo prestamo : this.prestamos) {
-                if (prestamo.getCliente().getNombre().toLowerCase().contains(nombreCliente.toLowerCase())) {
+                if (prestamo.getCliente().getNombre().toLowerCase().contains(nombreCliente.toLowerCase())
+                        || prestamo.getCliente().getApodo().toLowerCase().contains(nombreCliente.toLowerCase())) {
                     prestamosBuscados.add(prestamo);
                 }
             }
@@ -204,18 +222,20 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     /**
      * filtra los prestamos que ya fueron cobrados, dejando como resultado los prestamos por cobrar el dia de hoy
+     *
      * @param prestamos prestamos cargados
      * @return lista de prestamos por cobrar hoy
      */
-    private List<Prestamo> filtrarPorCobrarHoy(List<Prestamo> prestamos){
+    private List<Prestamo> filtrarPorCobrarHoy(List<Prestamo> prestamos) {
         List<Prestamo> prestamosAMostrar = new ArrayList<>();
         for (Prestamo prestamo : prestamos) {
-            if (!UtilsPreferences.prestamoCobradoHoy(prestamo.getId())){
+            if (!UtilsPreferences.prestamoCobradoHoy(prestamo.getId())) {
                 prestamosAMostrar.add(prestamo);
             }
         }
         return prestamosAMostrar;
     }
+
     /**
      * resetea los prestamos mostrados con todos los existentes
      */
@@ -271,6 +291,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         private List<Prestamo> prestamos;
 
         private TextView tvNombre;
+        private TextView tvApodo;
         private TextView tvDireccion;
         private TextView tvTelefono;
         private TextView tvFechaPrestamo;
@@ -312,12 +333,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             tvDireccion = rowView.findViewById(R.id.tvDireccion);
             tvTelefono = rowView.findViewById(R.id.tvTelefono);
             tvFechaPrestamo = rowView.findViewById(R.id.tvFechaPrestamo);
-
+            tvApodo = rowView.findViewById(R.id.tvApodo);
 
             View barrita = rowView.findViewById(R.id.barrita);
-            if (UtilsPreferences.prestamoCobradoHoy(prestamo.getId())){
+            if (UtilsPreferences.prestamoCobradoHoy(prestamo.getId())) {
                 barrita.setBackgroundResource(R.color.positive);
-            }else{
+            } else {
                 barrita.setBackgroundResource(R.color.warning);
             }
 
@@ -325,6 +346,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             tvDireccion.setText(prestamo.getCliente().getDireccion());
             tvTelefono.setText(prestamo.getCliente().getTelefono());
             tvFechaPrestamo.setText(UtilsDate.format_D_MM_YYYY(prestamo.getFecha()));
+            tvApodo.setText(prestamo.getCliente().getApodo());
 
             return rowView;
         }
